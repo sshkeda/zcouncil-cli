@@ -22,6 +22,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: Upgrade npm to a trusted-publishing-capable version
+        # Node 22 ships npm 10; npm 11.5.1+ is required for OIDC trusted publishing.
+        run: npm install -g npm@latest
       - name: Verify tag matches package.json version
         run: |
           tag="${GITHUB_REF_NAME#v}"
