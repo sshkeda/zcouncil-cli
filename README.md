@@ -47,14 +47,19 @@ chatgpt.com/backend-api/codex/responses
 
 ## Install
 
+### Easy mode — let your coding agent do it
+
+Paste [`PROMPT.md`](./PROMPT.md) into Codex CLI, Claude Code, Cursor, or
+any agent with shell access. Replace `<YOUR_ZCOUNCIL_TOKEN>` with the
+token from [zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge).
+The agent will check prerequisites (Bun, pi-ai), clone the repo, install
+deps, and run the bridge in the foreground. The Bridge tab in Settings
+also has a one-click "Copy install prompt" button that bakes the token in.
+
+### Manual install
+
 ```bash
 # Requires Bun 1.3+ — install: https://bun.sh
-bun install -g zcouncil-cli   # publishing soon
-```
-
-Or run from source:
-
-```bash
 git clone https://github.com/sshkeda/zcouncil-cli
 cd zcouncil-cli
 bun install
