@@ -18,10 +18,10 @@
 // Source + issues: https://github.com/sshkeda/zcouncil-cli
 
 import { existsSync, readFileSync, statSync } from "node:fs"
-import { homedir } from "node:os"
+import { homedir, hostname } from "node:os"
 import { join } from "node:path"
 
-const CLI_VERSION = "0.2.1"
+const CLI_VERSION = "0.2.2"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
@@ -260,6 +260,8 @@ function connectOnce(opts) {
           protocolVersion: PROTOCOL_VERSION,
           cliVersion: CLI_VERSION,
           models: SUPPORTED_MODELS,
+          pid: process.pid,
+          hostname: hostname(),
         }),
       )
     })
