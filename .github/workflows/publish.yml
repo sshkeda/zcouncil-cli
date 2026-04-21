@@ -1,0 +1,36 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Publishing requires npm auth via NPM_TOKEN repo secret. Use an automation
+# token: https://docs.npmjs.com/creating-and-viewing-access-tokens
+# Tag a release with `npm version patch && git push --follow-tags` to fire.
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Verify tag matches package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          test "$tag" = "$pkg" || (echo "tag $tag != package.json $pkg" && exit 1)
+      - name: Smoke test
+        run: |
+          node bridge.mjs --version
+          node bridge.mjs --help
+      - name: Publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

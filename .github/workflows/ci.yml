@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify --help runs
+        run: node bridge.mjs --help
+      - name: Verify --version runs
+        run: node bridge.mjs --version
+      - name: Verify missing-token error path
+        run: |
+          set +e
+          node bridge.mjs > out.txt 2> err.txt
+          code=$?
+          set -e
+          test "$code" = "2" || (echo "expected exit 2, got $code" && cat err.txt && exit 1)
+          grep -q "missing --token" err.txt
