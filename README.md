@@ -47,14 +47,16 @@ chatgpt.com/backend-api/codex/responses
 
 ## Install
 
-### Easy mode — let your coding agent do it
+### Easy mode — paste a prompt into Codex CLI
 
-Paste [`PROMPT.md`](./PROMPT.md) into Codex CLI, Claude Code, Cursor, or
-any agent with shell access. Replace `<YOUR_ZCOUNCIL_TOKEN>` with the
-token from [zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge).
-The agent will check prerequisites (Bun, pi-ai), clone the repo, install
-deps, and run the bridge in the foreground. The Bridge tab in Settings
-also has a one-click "Copy install prompt" button that bakes the token in.
+Open [zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge),
+copy the install prompt (your session token is baked in), paste it into
+[Codex CLI](https://developers.openai.com/codex/cli/). Codex checks
+prerequisites (Bun, pi-ai), clones this repo, installs dependencies, and
+runs the bridge in the foreground.
+
+The same prompt is mirrored at [`PROMPT.md`](./PROMPT.md) if you want to
+read or tweak it before running.
 
 ### Manual install
 

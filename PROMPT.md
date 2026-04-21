@@ -1,11 +1,14 @@
-# Install prompt
+# Codex install prompt
 
-A single prompt you can paste into any coding agent (Codex CLI, Claude
-Code, Cursor, etc.) to install and run zcouncil-cli on your machine.
+A single prompt to paste into [Codex CLI](https://developers.openai.com/codex/cli/)
+that installs and runs zcouncil-cli for you. Structured per
+[OpenAI's prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance):
+persistence directive up top, flat period-terminated lists, explicit
+success criteria, hard token-handling constraints.
 
-The prompt below assumes the agent has shell access. Replace
-`<YOUR_ZCOUNCIL_TOKEN>` with the token from
-[zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge).
+Replace `<YOUR_ZCOUNCIL_TOKEN>` with the token from
+[zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge),
+or use the in-app **Copy** button there to get the token already baked in.
 
 ---
 
