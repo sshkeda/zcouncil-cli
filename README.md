@@ -48,40 +48,23 @@ chatgpt.com/backend-api/codex/responses
 
 ## Install
 
-### Easy mode — paste a prompt into Codex CLI
-
-Open [zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge),
-copy the install prompt (your session token is baked in), paste it into
-[Codex CLI](https://developers.openai.com/codex/cli/). Codex checks
-prerequisites (Bun, pi-ai), clones this repo, installs dependencies, and
-runs the bridge in the foreground.
-
-The same prompt is mirrored at [`PROMPT.md`](./PROMPT.md) if you want to
-read or tweak it before running.
-
-### Manual install
+One file. No build, no `node_modules`, no Bun. Just Node 22+ and the
+official Codex CLI.
 
 ```bash
-# Requires Bun 1.3+ — install: https://bun.sh
-git clone https://github.com/sshkeda/zcouncil-cli
-cd zcouncil-cli
-bun install
-bun src/index.ts --token <your token>
+# 1. install OpenAI's Codex CLI and sign in (one-time)
+npm i -g @openai/codex
+codex login          # choose "Sign in with ChatGPT", do the browser flow
+
+# 2. run the bridge
+npx -y zcouncil-cli --token <your zcouncil session token>
 ```
 
-## Setup
-
-1. Install OpenAI's official Codex CLI: `npm i -g @openai/codex`
-2. Run `codex login`, choose **Sign in with ChatGPT**, complete the
-   browser OAuth flow. This writes `~/.codex/auth.json` — that's where
-   this CLI reads from. Codex CLI handles refresh in the background.
-3. Sign in to [zcouncil.com](https://zcouncil.com). Open Settings → Bridge
-   and copy your session token.
-4. Run:
-
-```bash
-zcouncil-cli --token <paste your zcouncil session token>
-```
+Get the token from
+[zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge).
+That page also has a one-click **Copy install prompt** button you can
+paste into [Codex CLI](https://developers.openai.com/codex/cli/) and let
+it run the install for you.
 
 You'll see:
 
@@ -91,8 +74,17 @@ You'll see:
 [bridge] handshake ok (server protocol 1)
 ```
 
-Leave it running. zcouncil will use ChatGPT for every GPT call your account
-makes, until you close the terminal.
+Leave it running. zcouncil will use ChatGPT for every GPT call your
+account makes, until you close the terminal.
+
+### Inspect before you run
+
+```bash
+curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs | less
+# read it (~340 lines), then:
+curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs -o bridge.mjs
+node bridge.mjs --token <your token>
+```
 
 ## What it doesn't do
 
@@ -120,14 +112,12 @@ local bridge is connected.
 ## Source layout
 
 ```
-src/
-├── index.ts      # entry — CLI args, WS reconnect loop, dispatch
-├── auth.ts       # reads pi-ai's auth.json, extracts JWT account id
-├── codex.ts      # POST + SSE parse for chatgpt.com/backend-api/codex
-└── protocol.ts   # WebSocket message shapes (versioned)
+bridge.mjs   # one file, ~340 LOC: arg parsing, auth, codex SSE, WS loop
+package.json # bin entry for `npx zcouncil-cli`
 ```
 
-Total: ~400 LOC, zero runtime deps.
+No `node_modules`, no `tsconfig`, no build step. Uses Node 22+ globals
+only (`WebSocket`, `fetch`, `crypto`, `node:fs`, `node:os`, `node:path`).
 
 ## License
 
