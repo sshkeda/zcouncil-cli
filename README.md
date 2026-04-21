@@ -35,15 +35,16 @@ zcouncil-cli  ◄── WebSocket ──►    bridge worker
 chatgpt.com/backend-api/codex/responses
    Authorization: Bearer <your-codex-token>
    chatgpt-account-id: <your-account-id>
-   originator: pi
+   originator: codex_cli_rs
    body: { model, instructions, input: [{ role: user, text: prompt }], ... }
 ```
 
 - **What we (zcouncil) see:** the prompt (your chat message — we already
   have it), the streamed text reply, and a token-count for billing
-  display. We do **not** see your codex OAuth token.
-- **What ChatGPT sees:** a request that looks like pi-ai. Identical
-  headers. From your IP, with your account.
+  display. We do **not** see your ChatGPT OAuth token.
+- **What ChatGPT sees:** a request indistinguishable from a normal
+  Codex CLI call. Same headers, same originator. From your IP, with
+  your account.
 
 ## Install
 
@@ -70,9 +71,10 @@ bun src/index.ts --token <your token>
 
 ## Setup
 
-1. Install [pi-ai](https://pi-ai.com): `npm i -g @mariozechner/pi-coding-agent`
-2. Run `pi`, choose **Sign in with ChatGPT** in the auth menu. This
-   writes `~/.pi/agent/auth.json` — that's where this CLI reads from.
+1. Install OpenAI's official Codex CLI: `npm i -g @openai/codex`
+2. Run `codex login`, choose **Sign in with ChatGPT**, complete the
+   browser OAuth flow. This writes `~/.codex/auth.json` — that's where
+   this CLI reads from. Codex CLI handles refresh in the background.
 3. Sign in to [zcouncil.com](https://zcouncil.com). Open Settings → Bridge
    and copy your session token.
 4. Run:
@@ -84,7 +86,7 @@ zcouncil-cli --token <paste your zcouncil session token>
 You'll see:
 
 ```
-[auth] codex token loaded for account 0f79602e… (expires 2026-04-22T11:31:22.000Z)
+[auth] codex token loaded for account 0f79602e…
 [bridge] connected to wss://api.zcouncil.com/bridge
 [bridge] handshake ok (server protocol 1)
 ```
@@ -102,9 +104,10 @@ makes, until you close the terminal.
 
 ## Auth and rotation
 
-pi-ai refreshes the codex OAuth token on its own schedule (~24h cycles).
-This CLI re-reads `auth.json` whenever a request arrives, so the next
-codex call after pi rotates will use the new token automatically. No
+OpenAI's Codex CLI refreshes the ChatGPT OAuth token on its own
+schedule (~24h cycles) — it owns the refresh-token grant. This CLI
+re-reads `~/.codex/auth.json` on every request, so the next bridge
+call after codex rotates picks up the new token automatically. No
 restart needed.
 
 ## Falling back to paid

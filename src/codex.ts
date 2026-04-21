@@ -50,10 +50,11 @@ function buildHeaders(args: CodexCallArgs, sessionId: string): Headers {
   const h = new Headers()
   h.set("Authorization", `Bearer ${args.accessToken}`)
   h.set("chatgpt-account-id", args.accountId)
-  // Match pi-ai's originator + UA so ChatGPT's WAF treats us identically.
-  // Both fields read "pi" — the backend cross-references them.
-  h.set("originator", "pi")
-  h.set("User-Agent", "pi (browser)")
+  // Match the official Codex CLI's originator + UA — the token came from
+  // `codex login`, so the backend treats this request like a normal
+  // codex-cli call and applies your ChatGPT plan's rate limits.
+  h.set("originator", "codex_cli_rs")
+  h.set("User-Agent", "codex_cli_rs/0.1.0")
   h.set("OpenAI-Beta", "responses=experimental")
   h.set("accept", "text/event-stream")
   h.set("content-type", "application/json")

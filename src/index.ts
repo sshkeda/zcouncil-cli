@@ -7,7 +7,7 @@
 //   opens a WebSocket to api.zcouncil.com/bridge with your zcouncil session
 //   token. When the council needs an answer from GPT, the worker sends a
 //   request down the WebSocket. This CLI calls ChatGPT's backend from your
-//   own IP using your own login (read from pi-ai's auth.json), streams the
+//   own IP using your own login (read from ~/.codex/auth.json), streams the
 //   reply back over the WebSocket, and the worker forwards it to your
 //   browser. The token never touches our servers.
 //
@@ -69,7 +69,8 @@ function printHelp(): void {
   console.log(`zcouncil-cli ${CLI_VERSION}
 
   Local bridge to let zcouncil.com use your ChatGPT plan for the GPT council
-  member. Reads your codex token from pi-ai's auth.json (~/.pi/agent/auth.json).
+  member. Reads your ChatGPT OAuth token from ~/.codex/auth.json — the file
+  the official Codex CLI writes after \`codex login\`.
   No token leaves your machine except in the Authorization header to
   chatgpt.com.
 
@@ -197,17 +198,17 @@ async function runForever(opts: CliOptions): Promise<void> {
     console.error(`error: ${err instanceof Error ? err.message : String(err)}`)
     process.exit(1)
   }
-  console.log(
-    `[auth] codex token loaded for account ${auth.accountId.slice(0, 8)}…${auth.expiresAt ? ` (expires ${new Date(auth.expiresAt).toISOString()})` : ""}`,
-  )
+  console.log(`[auth] codex token loaded for account ${auth.accountId.slice(0, 8)}…`)
 
-  // Watch for pi rotating the token in the background — log when it happens
+  // Watch for codex rotating the token in the background — log when it happens
   // so users can correlate disconnects with refreshes.
   setInterval(() => {
     if (authChanged(auth!)) {
       try {
         auth = loadCodexAuth()
-        console.log(`[auth] pi refreshed the token (mtime=${new Date(auth.fileMtimeMs).toISOString()})`)
+        console.log(
+          `[auth] codex refreshed the token (mtime=${new Date(auth.fileMtimeMs).toISOString()})`,
+        )
       } catch (err) {
         console.warn(`[auth] reload failed: ${err instanceof Error ? err.message : String(err)}`)
       }
