@@ -21,7 +21,7 @@ import { existsSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-const CLI_VERSION = "0.2.0"
+const CLI_VERSION = "0.2.1"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"

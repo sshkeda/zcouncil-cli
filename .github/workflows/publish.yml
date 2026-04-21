@@ -5,9 +5,10 @@ on:
     tags:
       - "v*"
 
-# Publishing requires npm auth via NPM_TOKEN repo secret. Use an automation
-# token: https://docs.npmjs.com/creating-and-viewing-access-tokens
-# Tag a release with `npm version patch && git push --follow-tags` to fire.
+# Uses npm Trusted Publishing (OIDC) — no NPM_TOKEN needed. Prerequisite:
+# the zcouncil-cli package on npm must list this workflow as a trusted
+# publisher (npm.com → package → Settings → Publishing Access → GitHub
+# Actions). Tag a release with `npm version patch && git push --follow-tags`.
 
 jobs:
   publish:
@@ -32,5 +33,3 @@ jobs:
           node bridge.mjs --help
       - name: Publish
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
