@@ -29,7 +29,7 @@ import { homedir, hostname } from "node:os"
 import { dirname, join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.1"
+const CLI_VERSION = "0.3.2"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
