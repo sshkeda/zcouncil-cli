@@ -62,9 +62,10 @@ npx -y zcouncil-cli logout
 When everything is connected:
 
 ```text
-[auth] codex token loaded for account 0f79602e...
-[bridge] connected to wss://api.zcouncil.com/bridge
-[bridge] handshake ok (server protocol 1)
+Signed in to ChatGPT as you@gmail.com (account 0f79602e).
+Signed in to zcouncil as you@example.com (user j57abcde).
+Connected to zcouncil.
+Listening for council requests…
 ```
 
 Leave that terminal open while you use zcouncil. If the terminal closes, the

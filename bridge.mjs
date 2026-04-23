@@ -157,7 +157,9 @@ async function promptForToken(bridgeUrl) {
   }
 }
 
-// Server auth check: returns "valid" / "invalid" / "unreachable".
+// Server auth check: returns a status plus zcouncil account metadata when
+// available. The metadata is only for local startup logging; the token remains
+// the credential used for the WebSocket bridge.
 // Lets the CLI distinguish a revoked token (exit immediately with the
 // deep link) from a transient network blip (keep retrying) — the WS
 // handshake alone reports both as close code 1006.
@@ -169,11 +171,21 @@ async function checkToken(opts) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token: opts.token }),
     })
-    if (res.status === 401) return "invalid"
-    if (res.ok) return "valid"
-    return "unreachable"
+    if (res.status === 401) return { status: "invalid", user: null }
+    if (!res.ok) return { status: "unreachable", user: null }
+    let json
+    try {
+      json = await res.json()
+    } catch {
+      return { status: "valid", user: null }
+    }
+    const user = json?.user
+    if (typeof user?.id === "string" && typeof user?.email === "string") {
+      return { status: "valid", user: { id: user.id, email: user.email } }
+    }
+    return { status: "valid", user: null }
   } catch {
-    return "unreachable"
+    return { status: "unreachable", user: null }
   }
 }
 
@@ -192,10 +204,53 @@ function exitOnInvalidToken(opts) {
   process.exit(2)
 }
 
+async function replaceInvalidSavedToken(opts) {
+  console.error("")
+  console.error("Your saved zcouncil token is no longer valid.")
+  console.error(`Create a new token: ${settingsUrl(opts.bridgeUrl)}`)
+  if (!process.stdin.isTTY) {
+    console.error("Run this in an interactive terminal to replace the saved token.")
+    process.exit(2)
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  let pasted
+  try {
+    pasted = (await rl.question("Paste the new token: ")).trim()
+  } finally {
+    rl.close()
+  }
+
+  if (!pasted) {
+    console.error("No token entered. Saved token left unchanged.")
+    process.exit(2)
+  }
+  if (pasted === PLACEHOLDER_TOKEN || /^<.+>$/.test(pasted)) {
+    console.error(`"${pasted}" is the placeholder, not a real token.`)
+    console.error("Saved token left unchanged.")
+    process.exit(2)
+  }
+
+  const nextOpts = { ...opts, token: pasted, tokenFromFile: false, tokenFromFlag: true }
+  const check = await checkToken(nextOpts)
+  if (check.status === "invalid") {
+    console.error("That replacement token is also invalid. Saved token left unchanged.")
+    process.exit(2)
+  }
+  if (check.status === "unreachable") {
+    console.error("Couldn't verify the replacement token. Saved token left unchanged.")
+    process.exit(2)
+  }
+
+  opts.token = pasted
+  opts.tokenFromFile = false
+  opts.tokenFromFlag = true
+  return check
+}
+
 // Write the raw token to ~/.zcouncil/token with 0600 perms so the next
-// `npx -y zcouncil-cli` picks it up with no flag. We only save tokens
-// passed via --token; env-var or already-saved tokens are left alone so
-// we don't silently move a value from one source to another.
+// `npx -y zcouncil-cli` picks it up with no flag. We save explicit
+// --token values and validated replacements for stale saved tokens.
 function saveTokenOnce(token) {
   try {
     const dir = dirname(TOKEN_PATH)
@@ -240,6 +295,18 @@ function printHelp() {
 
 // ─── auth ───────────────────────────────────────────────────────────────────
 
+function authEmailFrom(file, tokens) {
+  const candidates = [
+    tokens?.account_email,
+    tokens?.email,
+    file?.account_email,
+    file?.email,
+    file?.user?.email,
+    file?.account?.email,
+  ]
+  return candidates.find((value) => typeof value === "string" && value.includes("@")) ?? null
+}
+
 function loadCodexAuth() {
   if (!existsSync(AUTH_PATH)) {
     throw new Error(
@@ -262,8 +329,22 @@ function loadCodexAuth() {
   return {
     accessToken: t.access_token,
     accountId: t.account_id,
+    email: authEmailFrom(file, t),
     fileMtimeMs: statSync(AUTH_PATH).mtimeMs,
   }
+}
+
+function shortId(id) {
+  return typeof id === "string" ? id.slice(0, 8) : "unknown"
+}
+
+function chatgptAccountLabel(auth) {
+  const id = shortId(auth.accountId)
+  return auth.email ? `${auth.email} (account ${id})` : `account ${id}`
+}
+
+function zcouncilAccountLabel(user) {
+  return `${user.email} (user ${shortId(user.id)})`
 }
 
 // ─── codex SSE streaming ────────────────────────────────────────────────────
@@ -515,7 +596,7 @@ async function main() {
     console.error(`error: ${err.message}`)
     process.exit(1)
   }
-  console.log(`Signed in to ChatGPT as account ${auth.accountId.slice(0, 8)}.`)
+  console.log(`Signed in to ChatGPT as ${chatgptAccountLabel(auth)}.`)
 
   // Watch for codex rotating the token in the background — log when it
   // happens so users can correlate disconnects with refreshes.
@@ -536,9 +617,18 @@ async function main() {
   // ("unreachable") fall through to the retry loop below. Saving a
   // freshly-passed `--token` happens AFTER preflight so a bad token
   // never lands in ~/.zcouncil/token.
-  const preflight = await checkToken(opts)
-  if (preflight === "invalid") exitOnInvalidToken(opts)
-  if (opts.tokenFromFlag && preflight === "valid") saveTokenOnce(opts.token)
+  let preflight = await checkToken(opts)
+  if (preflight.status === "invalid") {
+    preflight = opts.tokenFromFile
+      ? await replaceInvalidSavedToken(opts)
+      : exitOnInvalidToken(opts)
+  }
+  if (preflight.status === "valid") {
+    if (preflight.user) {
+      console.log(`Signed in to zcouncil as ${zcouncilAccountLabel(preflight.user)}.`)
+    }
+    if (opts.tokenFromFlag) saveTokenOnce(opts.token)
+  }
 
   let backoffMs = RECONNECT_BASE_MS
   for (;;) {
@@ -559,7 +649,7 @@ async function main() {
       // auth (revoked mid-session) or transport (Convex/worker blip)
       // before deciding to retry.
       const check = await checkToken(opts)
-      if (check === "invalid") exitOnInvalidToken(opts)
+      if (check.status === "invalid") exitOnInvalidToken(opts)
       console.log(`Couldn't reach zcouncil. Retrying in ${Math.round(backoffMs / 1000)}s…`)
     }
     await new Promise((r) => setTimeout(r, backoffMs))
