@@ -1,122 +1,149 @@
 # zcouncil-cli
 
-A small bridge that lets [zcouncil.com](https://zcouncil.com) use **your**
-ChatGPT plan for the GPT council member, instead of charging your account
-per-token via OpenRouter.
+`zcouncil-cli` is the optional local bridge for [zcouncil.com](https://zcouncil.com).
+It lets the GPT member of your council run through the ChatGPT account already
+signed in on your computer with OpenAI's Codex CLI.
 
-## Why this exists
+You still chat on zcouncil.com. The CLI just sits in a terminal, waits for GPT
+work, sends that work from your machine, and streams the answer back to your
+council.
 
-zcouncil runs three AI models in parallel (GPT, Gemini, Grok), then
-synthesizes them. The Gemini and Grok calls happen on the server. The GPT
-call uses OpenAI's `responses` endpoint, which is reachable two ways:
+## Why Use It?
 
-1. The paid OpenAI API — works from anywhere, costs per token.
-2. The ChatGPT backend (`chatgpt.com/backend-api/codex/responses`) — free
-   if you have a ChatGPT subscription, but it blocks server-side requests
-   at the network layer (Cloudflare Worker IPs and TLS fingerprints get a
-   403 from the WAF).
+zcouncil is built around comparison: one chat, multiple AI models, clear
+disagreements. The GPT member can use this local bridge while the rest of the
+council continues through zcouncil's hosted service.
 
-This CLI runs on **your laptop**, where requests look like a normal
-browser. It opens a WebSocket to `api.zcouncil.com/bridge`, waits for the
-server to ask for a GPT response, calls ChatGPT from your IP, and streams
-the answer back. Your token never touches our servers.
+That means:
 
-## What goes over the network
+- your ChatGPT access token stays on your computer
+- zcouncil still receives the prompt and GPT response needed to show your chat
+- you can close the terminal whenever you want to disconnect the bridge
+- if the bridge is not running, zcouncil can fall back to the hosted GPT route
 
-```
-Your laptop                         api.zcouncil.com
-─────────────                       ──────────────────
-zcouncil-cli  ◄── WebSocket ──►    bridge worker
-     │                                    ▲
-     │                                    │ (request) {model, prompt, systemPrompt}
-     │ ◄────── (response) {delta, done, usage} ───────
-     │
-     ▼
-chatgpt.com/backend-api/codex/responses
-   Authorization: Bearer <your-codex-token>
-   chatgpt-account-id: <your-account-id>
-   originator: codex_cli_rs
-   body: { model, instructions, input: [{ role: user, text: prompt }], ... }
-```
-
-- **What we (zcouncil) see:** the prompt (your chat message — we already
-  have it), the streamed text reply, and a token-count for billing
-  display. We do **not** see your ChatGPT OAuth token.
-- **What ChatGPT sees:** a request indistinguishable from a normal
-  Codex CLI call. Same headers, same originator. From your IP, with
-  your account.
+The CLI is not required to use zcouncil. It is there if you want your local
+ChatGPT session to power the GPT member.
 
 ## Install
 
-One file. No build, no `node_modules`, no Bun. Just Node 22+ and the
-official Codex CLI.
+You need Node 22+ and the official Codex CLI signed in with ChatGPT.
 
 ```bash
-# 1. install OpenAI's Codex CLI and sign in (one-time)
 npm i -g @openai/codex
-codex login          # choose "Sign in with ChatGPT", do the browser flow
-
-# 2. run the bridge
+codex login
 npx -y zcouncil-cli
 ```
 
-On first run, the CLI prints a deep link to create a zcouncil API token,
-waits for you to paste it, then saves it to `~/.zcouncil/token` so future
-runs do not need a flag.
+On first run, `zcouncil-cli` prints a link to create a zcouncil API token:
 
-You'll see:
+```text
+No zcouncil token found.
 
+1. Create one: https://zcouncil.com/chat?action=new-token
+2. Paste it here:
 ```
-[auth] codex token loaded for account 0f79602e…
+
+Create a token, paste it into the terminal, and leave the process running.
+After the token is validated, it is saved to `~/.zcouncil/token` with local file
+permissions so future runs can start with:
+
+```bash
+npx -y zcouncil-cli
+```
+
+To disconnect, close the terminal. To remove the saved zcouncil token:
+
+```bash
+npx -y zcouncil-cli logout
+```
+
+## What You Should See
+
+When everything is connected:
+
+```text
+[auth] codex token loaded for account 0f79602e...
 [bridge] connected to wss://api.zcouncil.com/bridge
 [bridge] handshake ok (server protocol 1)
 ```
 
-Leave it running. zcouncil will use ChatGPT for every GPT call your
-account makes, until you close the terminal.
+Leave that terminal open while you use zcouncil. If the terminal closes, the
+local bridge disconnects.
 
-### Inspect before you run
+## What Moves Where
+
+```text
+Your computer                         zcouncil bridge
+-------------                         ---------------
+zcouncil-cli  <---- WebSocket ---->   api.zcouncil.com
+     |
+     | sends GPT requests using your local Codex CLI sign-in
+     v
+ChatGPT
+```
+
+In plain terms:
+
+- zcouncil sees the chat content needed to provide the service: your prompt, the
+  GPT response, and basic usage information
+- zcouncil does not receive your ChatGPT access token
+- the CLI reads ChatGPT auth from `~/.codex/auth.json`, the file managed by the
+  official Codex CLI
+- the zcouncil API token is stored locally at `~/.zcouncil/token`
+
+For the full data and legal terms, read the zcouncil
+[Privacy Policy](https://zcouncil.com/privacy) and
+[Terms of Service](https://zcouncil.com/terms).
+
+## What It Does Not Do
+
+- It does not replace zcouncil.com. You still type prompts in the web app.
+- It does not store your chat history locally.
+- It does not send analytics, telemetry, or crash reports.
+- It does not auto-update itself.
+- It does not recover old zcouncil API tokens. If you lose one, create a new one
+  from zcouncil settings.
+
+## Your Responsibility
+
+Only use the bridge with accounts and credentials you are allowed to use. You
+are responsible for your device, your zcouncil API token, your ChatGPT account,
+and complying with the terms and usage policies that apply to the services you
+connect.
+
+Do not submit sensitive regulated data, credentials, payment card information,
+or anything else prohibited by the zcouncil Terms of Service.
+
+## Inspect Before Running
+
+The package is one executable file with no runtime dependencies.
 
 ```bash
 curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs | less
-# read it (~340 lines), then:
+```
+
+To run that inspected copy directly:
+
+```bash
 curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs -o bridge.mjs
 node bridge.mjs
 ```
 
-## What it doesn't do
+## Requirements
 
-- **No chat input.** After the first-run token prompt, it's a daemon — you
-  type your questions on zcouncil.com, not here.
-- **No history.** This CLI doesn't store conversation history; the worker
-  keeps that.
-- **No telemetry.** No analytics, no error reporting, no auto-update.
+- Node 22 or newer
+- OpenAI's Codex CLI signed in with ChatGPT
+- a zcouncil account
 
-## Auth and rotation
+## Source Layout
 
-OpenAI's Codex CLI refreshes the ChatGPT OAuth token on its own
-schedule (~24h cycles) — it owns the refresh-token grant. This CLI
-re-reads `~/.codex/auth.json` on every request, so the next bridge
-call after codex rotates picks up the new token automatically. No
-restart needed.
-
-## Falling back to paid
-
-If you stop the CLI, zcouncil keeps working — the GPT council member
-silently switches to OpenRouter (`openai/gpt-5.4`), which charges your
-account per token. The status badge in Settings → Bridge shows whether a
-local bridge is connected.
-
-## Source layout
-
-```
-bridge.mjs   # one file, ~340 LOC: arg parsing, auth, codex SSE, WS loop
-package.json # bin entry for `npx zcouncil-cli`
+```text
+bridge.mjs   # CLI, auth loading, token prompt, WebSocket bridge
+package.json # npm package metadata
 ```
 
-No `node_modules`, no `tsconfig`, no build step. Uses Node 22+ globals
-only (`WebSocket`, `fetch`, `crypto`, `node:fs`, `node:os`, `node:path`).
+No build step. No bundled dependencies.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

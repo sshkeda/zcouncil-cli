@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// zcouncil-cli — local bridge that lets zcouncil.com use your ChatGPT plan
-// for the GPT council member.
+// zcouncil-cli — optional local bridge for the GPT member on zcouncil.com.
 //
 // What it does, in one paragraph:
 //
@@ -30,7 +29,7 @@ import { homedir, hostname } from "node:os"
 import { dirname, join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.0"
+const CLI_VERSION = "0.3.1"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
@@ -216,9 +215,9 @@ function saveTokenOnce(token) {
 function printHelp() {
   console.log(`zcouncil-cli ${CLI_VERSION}
 
-  Local bridge to let zcouncil.com use your ChatGPT plan for the GPT
-  council member. Reads your ChatGPT OAuth token from ${AUTH_PATH} —
-  the file the official Codex CLI writes after \`codex login\`.
+  Optional local bridge for the GPT member on zcouncil.com. You still
+  chat in the web app; this process runs locally and uses the ChatGPT
+  sign-in managed by OpenAI's Codex CLI at ${AUTH_PATH}.
 
   Get a zcouncil token: ${PROD_SETTINGS_URL}
 

@@ -1,7 +1,7 @@
 {
   "name": "zcouncil-cli",
-  "version": "0.3.0",
-  "description": "Local bridge that lets zcouncil.com use your ChatGPT plan for the GPT council member.",
+  "version": "0.3.1",
+  "description": "Optional local bridge for the GPT member on zcouncil.com.",
   "license": "MIT",
   "type": "module",
   "main": "bridge.mjs",
