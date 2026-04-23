@@ -148,6 +148,7 @@ async function promptForToken(bridgeUrl) {
   console.log("No zcouncil token found.")
   console.log("")
   console.log(`1. Create one: ${settingsUrl(bridgeUrl)}`)
+  if (!process.stdin.isTTY) return ""
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
     const answer = await rl.question("2. Paste it here: ")

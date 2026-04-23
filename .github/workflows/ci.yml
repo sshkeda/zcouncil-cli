@@ -22,9 +22,11 @@ jobs:
         run: node bridge.mjs --version
       - name: Verify missing-token error path
         run: |
+          tmp_home="$(mktemp -d)"
           set +e
-          node bridge.mjs > out.txt 2> err.txt
+          HOME="$tmp_home" node bridge.mjs > out.txt 2> err.txt
           code=$?
           set -e
+          rm -rf "$tmp_home"
           test "$code" = "2" || (echo "expected exit 2, got $code" && cat err.txt && exit 1)
-          grep -q "missing --token" err.txt
+          grep -q "No token entered" err.txt
