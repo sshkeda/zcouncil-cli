@@ -57,14 +57,12 @@ npm i -g @openai/codex
 codex login          # choose "Sign in with ChatGPT", do the browser flow
 
 # 2. run the bridge
-npx -y zcouncil-cli --token <your zcouncil session token>
+npx -y zcouncil-cli
 ```
 
-Get the token from
-[zcouncil.com → Settings → Bridge](https://zcouncil.com/chat#settings/bridge).
-That page also has a one-click **Copy install prompt** button you can
-paste into [Codex CLI](https://developers.openai.com/codex/cli/) and let
-it run the install for you.
+On first run, the CLI prints a deep link to create a zcouncil API token,
+waits for you to paste it, then saves it to `~/.zcouncil/token` so future
+runs do not need a flag.
 
 You'll see:
 
@@ -83,13 +81,13 @@ account makes, until you close the terminal.
 curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs | less
 # read it (~340 lines), then:
 curl -fsSL https://unpkg.com/zcouncil-cli/bridge.mjs -o bridge.mjs
-node bridge.mjs --token <your token>
+node bridge.mjs
 ```
 
 ## What it doesn't do
 
-- **No keyboard input.** It's a daemon — you type your questions on
-  zcouncil.com, not here.
+- **No chat input.** After the first-run token prompt, it's a daemon — you
+  type your questions on zcouncil.com, not here.
 - **No history.** This CLI doesn't store conversation history; the worker
   keeps that.
 - **No telemetry.** No analytics, no error reporting, no auto-update.

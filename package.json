@@ -17,7 +17,6 @@
   "files": [
     "bridge.mjs",
     "README.md",
-    "PROMPT.md",
     "LICENSE"
   ],
   "repository": {

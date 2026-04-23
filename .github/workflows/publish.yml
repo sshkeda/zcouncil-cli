@@ -2,13 +2,17 @@ name: Publish to npm
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
 # Uses npm Trusted Publishing (OIDC) — no NPM_TOKEN needed. Prerequisite:
 # the zcouncil-cli package on npm must list this workflow as a trusted
 # publisher (npm.com → package → Settings → Publishing Access → GitHub
-# Actions). Tag a release with `npm version patch && git push --follow-tags`.
+# Actions). Push to main publishes package.json's version when that version
+# is not already on npm; v* tags still publish after validating the tag
+# matches package.json.
 
 jobs:
   publish:
@@ -23,14 +27,26 @@ jobs:
           # Node 24 ships npm 11, which is required for OIDC trusted publishing.
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Verify tag matches package.json version
+      - name: Resolve publish target
+        id: publish
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          name=$(node -p "require('./package.json').name")
           pkg=$(node -p "require('./package.json').version")
-          test "$tag" = "$pkg" || (echo "tag $tag != package.json $pkg" && exit 1)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+            test "$tag" = "$pkg" || (echo "tag $tag != package.json $pkg" && exit 1)
+          fi
+
+          if npm view "$name@$pkg" version >/dev/null 2>&1; then
+            echo "$name@$pkg is already published; skipping npm publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Smoke test
         run: |
           node bridge.mjs --version
           node bridge.mjs --help
       - name: Publish
+        if: steps.publish.outputs.should_publish == 'true'
         run: npm publish --access public --provenance
