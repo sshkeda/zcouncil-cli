@@ -17,6 +17,7 @@
   "files": [
     "bridge.mjs",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "repository": {
