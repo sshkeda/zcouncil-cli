@@ -30,7 +30,7 @@ import { homedir, hostname } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.4"
+const CLI_VERSION = "0.3.5"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
@@ -46,8 +46,9 @@ const PROD_SETTINGS_URL = "https://zcouncil.com/chat?action=new-token"
 
 // Derive the web origin from the bridge URL so `--bridge ws://localhost:8787/bridge`
 // points the user at http://localhost:4321 (the local astro dev server)
-// instead of prod. For prod (api.zcouncil.com), strip the `api.` subdomain;
-// for anything else (preview deploys, custom hosts), fall back to prod.
+// instead of prod. Production uses zcouncil.com. Preview workers follow
+// zcouncil-worker-preview-pr-<N>.*.workers.dev and map to the matching
+// Cloudflare Pages branch preview at https://pr-<N>.zcouncil.pages.dev.
 function settingsUrl(bridgeUrl) {
   try {
     const u = new URL(bridgeUrl.replace(/^ws/, "http"))
@@ -55,6 +56,8 @@ function settingsUrl(bridgeUrl) {
       return "http://localhost:4321/chat?action=new-token"
     }
     if (u.hostname === "api.zcouncil.com") return PROD_SETTINGS_URL
+    const preview = /^zcouncil-worker-preview-pr-(\d+)\./.exec(u.hostname)
+    if (preview) return `https://pr-${preview[1]}.zcouncil.pages.dev/chat?action=new-token`
     return PROD_SETTINGS_URL
   } catch {
     return PROD_SETTINGS_URL
