@@ -44,17 +44,27 @@ No zcouncil token found.
 ```
 
 Create a token, paste it into the terminal, and leave the process running.
-After the token is validated, it is saved to `~/.zcouncil/token` with local file
-permissions so future runs can start with:
+After the token is validated, it is saved under `~/.zcouncil/tokens/` with
+local file permissions and scoped to the bridge URL you used. Production,
+localhost, and preview/debug bridges can each keep their own token, so future
+runs against the same bridge can start with:
 
 ```bash
 npx -y zcouncil-cli
 ```
 
-To disconnect, close the terminal. To remove the saved zcouncil token:
+Local development keeps a separate token automatically:
+
+```bash
+node bridge.mjs --bridge ws://localhost:8787/bridge
+```
+
+To disconnect, close the terminal. To remove the saved zcouncil token for the
+selected bridge:
 
 ```bash
 npx -y zcouncil-cli logout
+npx -y zcouncil-cli --bridge ws://localhost:8787/bridge logout
 ```
 
 ## What You Should See
@@ -90,7 +100,7 @@ In plain terms:
 - zcouncil does not receive your ChatGPT access token
 - the CLI reads ChatGPT auth from `~/.codex/auth.json`, the file managed by the
   official Codex CLI
-- the zcouncil API token is stored locally at `~/.zcouncil/token`
+- the zcouncil API token is stored locally under `~/.zcouncil/tokens/`, scoped by bridge URL
 
 For the full data and legal terms, read the zcouncil
 [Privacy Policy](https://zcouncil.com/privacy) and
