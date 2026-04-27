@@ -29,9 +29,9 @@ import { homedir, hostname } from "node:os"
 import { dirname, join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.2"
+const CLI_VERSION = "0.3.3"
 const PROTOCOL_VERSION = 1
-const SUPPORTED_MODELS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+const SUPPORTED_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
 const CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 const AUTH_PATH = join(homedir(), ".codex", "auth.json")
@@ -459,7 +459,7 @@ function callTag(msg) {
   return shortCallId(msg?.id)
 }
 
-function promptPreview(text, maxChars = 9) {
+function promptPreview(text, maxChars = 80) {
   if (typeof text !== "string") return "..."
   const compact = text.replace(/\s+/g, " ").trim()
   if (!compact) return "..."
@@ -538,7 +538,7 @@ function connectOnce(opts) {
           console.log(`Listening for council requests…`)
           break
         case "call":
-          console.log(`→ ${msg.model} [${callTag(msg)}] ${promptPreview(msg.prompt)}`)
+          console.log(`→ ${msg.model} [${callTag(msg)}] ${promptPreview(msg.promptPreview ?? msg.prompt)}`)
           void handleCall(ws, msg)
           break
         case "cancel":
