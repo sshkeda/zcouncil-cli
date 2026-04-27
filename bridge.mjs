@@ -25,17 +25,20 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs"
+import { createHash } from "node:crypto"
 import { homedir, hostname } from "node:os"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.3"
+const CLI_VERSION = "0.3.4"
 const PROTOCOL_VERSION = 1
 const SUPPORTED_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
 const CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 const AUTH_PATH = join(homedir(), ".codex", "auth.json")
-const TOKEN_PATH = join(homedir(), ".zcouncil", "token")
+const ZCOUNCIL_DIR = join(homedir(), ".zcouncil")
+const TOKEN_DIR = join(ZCOUNCIL_DIR, "tokens")
+const LEGACY_TOKEN_PATH = join(ZCOUNCIL_DIR, "token")
 // Deep link — lands on the API tokens tab with the "New token" dialog
 // already open. Falls through OAuth correctly because the action is a
 // real query param (survives Google's callback), not a URL fragment.
@@ -71,27 +74,55 @@ if (nodeMajor < 22) {
   process.exit(2)
 }
 
-function logout() {
-  if (!existsSync(TOKEN_PATH)) {
-    console.log("Already logged out (no saved token).")
+function normalizeBridgeUrl(raw) {
+  try {
+    const url = new URL(raw)
+    url.hash = ""
+    url.search = ""
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/"
+    return url.toString()
+  } catch {
+    return raw.trim()
+  }
+}
+
+function tokenPathForBridge(bridgeUrl) {
+  const normalized = normalizeBridgeUrl(bridgeUrl)
+  const hash = createHash("sha256").update(normalized).digest("hex").slice(0, 12)
+  let label = "bridge"
+  try {
+    const url = new URL(normalized)
+    label = `${url.hostname}${url.port ? `-${url.port}` : ""}${url.pathname.replace(/\W+/g, "-")}`
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48)
+  } catch {
+    label = normalized.replace(/\W+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "bridge"
+  }
+  return join(TOKEN_DIR, `${label}-${hash}`)
+}
+
+function logout(bridgeUrl) {
+  const normalized = normalizeBridgeUrl(bridgeUrl)
+  const tokenPath = tokenPathForBridge(bridgeUrl)
+  const paths = [tokenPath]
+  if (normalized === normalizeBridgeUrl(DEFAULT_BRIDGE_URL)) paths.push(LEGACY_TOKEN_PATH)
+  const existing = paths.filter((path) => existsSync(path))
+  if (existing.length === 0) {
+    console.log(`Already logged out for ${normalized} (no saved token at ${tokenPath}).`)
     process.exit(0)
   }
   try {
-    unlinkSync(TOKEN_PATH)
-    console.log(`Logged out. Cleared saved token at ${TOKEN_PATH}.`)
+    for (const path of existing) unlinkSync(path)
+    console.log(`Logged out of ${normalized}. Cleared saved token${existing.length === 1 ? "" : "s"} at ${existing.join(", ")}.`)
     process.exit(0)
   } catch (err) {
-    console.error(`Couldn't clear ${TOKEN_PATH}: ${err.message}`)
+    console.error(`Couldn't clear saved token for ${normalized}: ${err.message}`)
     process.exit(1)
   }
 }
 
 function parseArgs(argv) {
   const args = argv.slice(2)
-  // Subcommand: `logout` wipes the saved token and exits. Checked
-  // anywhere in args (not just args[0]) so both `zcouncil-cli logout`
-  // and `zcouncil-cli --bridge <u> logout` work the same way.
-  if (args.includes("logout")) logout()
   let bridgeUrl = process.env.ZCOUNCIL_BRIDGE_URL ?? DEFAULT_BRIDGE_URL
   let token = process.env.ZCOUNCIL_TOKEN ?? ""
   let tokenFromFlag = false
@@ -110,18 +141,37 @@ function parseArgs(argv) {
       process.exit(0)
     }
   }
-  // No explicit token? Fall back to the saved one from the last run, so
-  // `npx -y zcouncil-cli` alone works on every reconnect.
+  if (args.includes("logout")) logout(bridgeUrl)
+
+  const tokenPath = tokenPathForBridge(bridgeUrl)
+  // No explicit token? Fall back to the saved one for this bridge location, so
+  // prod, localhost, and preview/debug bridges don't overwrite each other.
   let tokenFromFile = false
-  if (!token && existsSync(TOKEN_PATH)) {
+  let tokenFromLegacyFile = false
+  if (!token && existsSync(tokenPath)) {
     try {
-      const saved = readFileSync(TOKEN_PATH, "utf8").trim()
+      const saved = readFileSync(tokenPath, "utf8").trim()
       if (saved) {
         token = saved
         tokenFromFile = true
       }
     } catch (err) {
-      console.warn(`Couldn't read saved token at ${TOKEN_PATH}: ${err.message}`)
+      console.warn(`Couldn't read saved token at ${tokenPath}: ${err.message}`)
+    }
+  }
+  // Backwards compatibility for users who already have ~/.zcouncil/token from
+  // older CLI versions. Only use it for the default production bridge; local
+  // and preview bridges should always get their own explicitly-created token.
+  if (!token && normalizeBridgeUrl(bridgeUrl) === normalizeBridgeUrl(DEFAULT_BRIDGE_URL) && existsSync(LEGACY_TOKEN_PATH)) {
+    try {
+      const saved = readFileSync(LEGACY_TOKEN_PATH, "utf8").trim()
+      if (saved) {
+        token = saved
+        tokenFromFile = true
+        tokenFromLegacyFile = true
+      }
+    } catch (err) {
+      console.warn(`Couldn't read legacy saved token at ${LEGACY_TOKEN_PATH}: ${err.message}`)
     }
   }
   // Token may be empty here — main() prompts interactively in that case.
@@ -134,7 +184,7 @@ function parseArgs(argv) {
     console.error(`Create one: ${settingsUrl(bridgeUrl)}`)
     process.exit(2)
   }
-  return { bridgeUrl, token, tokenFromFlag, tokenFromFile }
+  return { bridgeUrl, token, tokenFromFlag, tokenFromFile, tokenFromLegacyFile, tokenPath }
 }
 
 // Interactive prompt for a missing token. Prints the deep link (derived
@@ -195,10 +245,17 @@ function exitOnInvalidToken(opts) {
   console.error(`Create a new one: ${settingsUrl(opts.bridgeUrl)}`)
   if (opts.tokenFromFile) {
     try {
-      unlinkSync(TOKEN_PATH)
+      unlinkSync(opts.tokenPath)
       console.error(`Cleared the stale saved token.`)
     } catch {
       // ignore
+    }
+    if (opts.tokenFromLegacyFile) {
+      try {
+        unlinkSync(LEGACY_TOKEN_PATH)
+      } catch {
+        // ignore
+      }
     }
   }
   process.exit(2)
@@ -231,7 +288,7 @@ async function replaceInvalidSavedToken(opts) {
     process.exit(2)
   }
 
-  const nextOpts = { ...opts, token: pasted, tokenFromFile: false, tokenFromFlag: true }
+  const nextOpts = { ...opts, token: pasted, tokenFromFile: false, tokenFromLegacyFile: false, tokenFromFlag: true }
   const check = await checkToken(nextOpts)
   if (check.status === "invalid") {
     console.error("That replacement token is also invalid. Saved token left unchanged.")
@@ -244,26 +301,37 @@ async function replaceInvalidSavedToken(opts) {
 
   opts.token = pasted
   opts.tokenFromFile = false
+  opts.tokenFromLegacyFile = false
   opts.tokenFromFlag = true
   return check
 }
 
-// Write the raw token to ~/.zcouncil/token with 0600 perms so the next
-// `npx -y zcouncil-cli` picks it up with no flag. We save explicit
-// --token values and validated replacements for stale saved tokens.
-function saveTokenOnce(token) {
+// Write the raw token to a bridge-scoped path with 0600 perms so the next
+// run against the same bridge URL picks it up with no flag. We save explicit
+// --token values, validated replacements for stale saved tokens, and migrate
+// the old default-production ~/.zcouncil/token on first successful startup.
+function saveTokenOnce(opts) {
   try {
-    const dir = dirname(TOKEN_PATH)
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true, mode: 0o700 })
+    if (!existsSync(ZCOUNCIL_DIR)) {
+      mkdirSync(ZCOUNCIL_DIR, { recursive: true, mode: 0o700 })
     }
-    const previous = existsSync(TOKEN_PATH) ? readFileSync(TOKEN_PATH, "utf8").trim() : ""
-    if (previous === token) return
-    writeFileSync(TOKEN_PATH, `${token}\n`, { mode: 0o600 })
-    chmodSync(TOKEN_PATH, 0o600)
-    console.log(`Token saved — future runs will skip the prompt.`)
+    if (!existsSync(TOKEN_DIR)) {
+      mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 })
+    }
+    const previous = existsSync(opts.tokenPath) ? readFileSync(opts.tokenPath, "utf8").trim() : ""
+    if (previous === opts.token) return
+    writeFileSync(opts.tokenPath, `${opts.token}\n`, { mode: 0o600 })
+    chmodSync(opts.tokenPath, 0o600)
+    if (opts.tokenFromLegacyFile) {
+      try {
+        unlinkSync(LEGACY_TOKEN_PATH)
+      } catch {
+        // ignore
+      }
+    }
+    console.log(`Token saved for ${normalizeBridgeUrl(opts.bridgeUrl)} — future runs with this bridge will skip the prompt.`)
   } catch (err) {
-    console.warn(`Couldn't save token to ${TOKEN_PATH}: ${err.message}`)
+    console.warn(`Couldn't save token to ${opts.tokenPath}: ${err.message}`)
   }
 }
 
@@ -278,15 +346,15 @@ function printHelp() {
 
   Usage:
     npx zcouncil-cli                              (prompts for a token on first run,
-                                                   reads ${TOKEN_PATH} after)
+                                                   reads the saved token for ${DEFAULT_BRIDGE_URL} after)
     npx zcouncil-cli --token <zcouncil-token>     (skip the prompt)
-    npx zcouncil-cli logout                       (clear the saved token)
+    npx zcouncil-cli logout                       (clear the saved token for the selected bridge)
     ZCOUNCIL_TOKEN=<token> npx zcouncil-cli
 
   Options:
-    --token <t>    zcouncil API token. Saved to ${TOKEN_PATH} on first
-                   run so future runs don't need the flag. Overrides
-                   any saved token.
+    --token <t>    zcouncil API token. Saved under ${TOKEN_DIR} for the
+                   selected bridge URL, so prod/local/preview tokens stay
+                   separate. Overrides any saved token.
     --bridge <u>   bridge WebSocket URL (default: ${DEFAULT_BRIDGE_URL})
     --version, -v
     --help, -h
@@ -627,7 +695,7 @@ async function main() {
     if (preflight.user) {
       console.log(`Signed in to zcouncil as ${zcouncilAccountLabel(preflight.user)}.`)
     }
-    if (opts.tokenFromFlag) saveTokenOnce(opts.token)
+    if (opts.tokenFromFlag || opts.tokenFromLegacyFile) saveTokenOnce(opts)
   }
 
   let backoffMs = RECONNECT_BASE_MS
