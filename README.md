@@ -1,36 +1,41 @@
 # zcouncil-cli
 
 `zcouncil-cli` is the optional local bridge for [zcouncil.com](https://zcouncil.com).
-It lets the GPT member of your council run through the ChatGPT account already
-signed in on your computer with OpenAI's Codex CLI.
+It lets council members run through local subscriptions on your computer,
+including ChatGPT via Codex and Claude Code.
 
-You still chat on zcouncil.com. The CLI just sits in a terminal, waits for GPT
+You still chat on zcouncil.com. The CLI just sits in a terminal, waits for model
 work, sends that work from your machine, and streams the answer back to your
 council.
 
 ## Why Use It?
 
 zcouncil is built around comparison: one chat, multiple AI models, clear
-disagreements. The GPT member can use this local bridge while the rest of the
-council continues through zcouncil's hosted service.
+disagreements. GPT and Claude members can use this local bridge while the rest
+of the council continues through zcouncil's hosted service.
 
 That means:
 
 - your ChatGPT access token stays on your computer
 - zcouncil still receives the prompt and GPT response needed to show your chat
 - you can close the terminal whenever you want to disconnect the bridge
-- if the bridge is not running, zcouncil can fall back to the hosted GPT route
+- if the bridge is not running, zcouncil can fall back to hosted cloud routes
 
-The CLI is not required to use zcouncil. It is there if you want your local
-ChatGPT session to power the GPT member.
+The CLI is not required to use zcouncil. It is there if you want local
+subscriptions to power supported council members.
 
 ## Install
 
-You need Node 22+ and the official Codex CLI signed in with ChatGPT.
+You need Node 22+ and at least one supported local provider:
 
 ```bash
+# ChatGPT route
 npm i -g @openai/codex
 codex login
+
+# Claude route
+claude setup-token
+
 npx -y zcouncil-cli
 ```
 
@@ -73,6 +78,8 @@ When everything is connected:
 
 ```text
 Signed in to ChatGPT as you@gmail.com (account 0f79602e).
+Claude Code detected.
+Bridge models: gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, claude-code/opus-4.7.
 Signed in to zcouncil as you@example.com (user j57abcde).
 Connected to zcouncil.
 Listening for council requests…
@@ -88,18 +95,18 @@ Your computer                         zcouncil bridge
 -------------                         ---------------
 zcouncil-cli  <---- WebSocket ---->   api.zcouncil.com
      |
-     | sends GPT requests using your local Codex CLI sign-in
+     | sends requests using local provider CLIs
      v
-ChatGPT
+ChatGPT / Claude Code
 ```
 
 In plain terms:
 
 - zcouncil sees the chat content needed to provide the service: your prompt, the
-  GPT response, and basic usage information
-- zcouncil does not receive your ChatGPT access token
+  model response, and basic usage information
+- zcouncil does not receive your ChatGPT or Claude Code credentials
 - the CLI reads ChatGPT auth from `~/.codex/auth.json`, the file managed by the
-  official Codex CLI
+  official Codex CLI; Claude Code auth stays inside Claude Code
 - the zcouncil API token is stored locally under `~/.zcouncil/tokens/`, scoped by bridge URL
 
 For the full data and legal terms, read the zcouncil

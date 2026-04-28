@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zcouncil-cli — optional local bridge for the GPT member on zcouncil.com.
+// zcouncil-cli — optional local model bridge for zcouncil.com.
 //
 // What it does, in one paragraph:
 //
@@ -26,13 +26,15 @@ import {
   writeFileSync,
 } from "node:fs"
 import { createHash } from "node:crypto"
+import { spawn, spawnSync } from "node:child_process"
 import { homedir, hostname } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline/promises"
 
-const CLI_VERSION = "0.3.5"
+const CLI_VERSION = "0.3.6"
 const PROTOCOL_VERSION = 1
-const SUPPORTED_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+const CODEX_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+const CLAUDE_CODE_MODELS = ["claude-code/opus-4.7"]
 const DEFAULT_BRIDGE_URL = "wss://api.zcouncil.com/bridge"
 const CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 const AUTH_PATH = join(homedir(), ".codex", "auth.json")
@@ -341,9 +343,9 @@ function saveTokenOnce(opts) {
 function printHelp() {
   console.log(`zcouncil-cli ${CLI_VERSION}
 
-  Optional local bridge for the GPT member on zcouncil.com. You still
-  chat in the web app; this process runs locally and uses the ChatGPT
-  sign-in managed by OpenAI's Codex CLI at ${AUTH_PATH}.
+  Optional local bridge for zcouncil.com. You still chat in the web app;
+  this process runs locally and can use your ChatGPT/Codex sign-in and
+  your Claude Code subscription when those CLIs are available.
 
   Get a zcouncil token: ${PROD_SETTINGS_URL}
 
@@ -416,6 +418,15 @@ function chatgptAccountLabel(auth) {
 
 function zcouncilAccountLabel(user) {
   return `${user.email} (user ${shortId(user.id)})`
+}
+
+function claudeCodeAvailable() {
+  const res = spawnSync("claude", ["--version"], { stdio: "ignore" })
+  return res.status === 0
+}
+
+function availableBridgeModels(auth, hasClaudeCode) {
+  return [...(auth ? CODEX_MODELS : []), ...(hasClaudeCode ? CLAUDE_CODE_MODELS : [])]
 }
 
 // ─── codex SSE streaming ────────────────────────────────────────────────────
@@ -519,6 +530,56 @@ async function* streamCodex(auth, args) {
   yield { type: "done", usage }
 }
 
+// ─── Claude Code print-mode calls ───────────────────────────────────────────
+
+function claudeModelArg(model) {
+  if (model === "claude-code/opus-4.7") return "opus"
+  return null
+}
+
+function runClaudeCode({ model, prompt, systemPrompt }) {
+  const claudeModel = claudeModelArg(model)
+  if (!claudeModel) throw new Error(`unsupported Claude Code model: ${model}`)
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "claude",
+      [
+        "-p",
+        "--model",
+        claudeModel,
+        "--effort",
+        "medium",
+        "--system-prompt",
+        systemPrompt ?? "You are a helpful assistant.",
+        "--tools",
+        "",
+        "--no-session-persistence",
+        prompt,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    )
+    let stdout = ""
+    let stderr = ""
+    child.stdout.setEncoding("utf8")
+    child.stderr.setEncoding("utf8")
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk
+    })
+    child.on("error", reject)
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ text: stdout.trim(), usage: { inputTokens: 0, outputTokens: 0 } })
+        return
+      }
+      const details = (stderr || stdout || `exit code ${code}`).replace(/\s+/g, " ").trim()
+      reject(new Error(`claude code failed: ${details}`))
+    })
+  })
+}
+
 // ─── bridge protocol ────────────────────────────────────────────────────────
 
 function shortCallId(id) {
@@ -539,7 +600,25 @@ function promptPreview(text, maxChars = 80) {
 
 async function handleCall(ws, req) {
   const tag = callTag(req)
-  if (!SUPPORTED_MODELS.includes(req.model)) {
+  if (CLAUDE_CODE_MODELS.includes(req.model)) {
+    try {
+      const result = await runClaudeCode({
+        model: req.model,
+        prompt: req.prompt,
+        systemPrompt: req.systemPrompt,
+      })
+      ws.send(JSON.stringify({ type: "delta", id: req.id, text: result.text }))
+      ws.send(JSON.stringify({ type: "done", id: req.id, usage: result.usage }))
+      console.log(`← ${req.model} [${tag}] done`)
+    } catch (err) {
+      const message = err.message ?? String(err)
+      ws.send(JSON.stringify({ type: "error", id: req.id, message }))
+      console.log(`← ${req.model} [${tag}] error (${message})`)
+    }
+    return
+  }
+
+  if (!CODEX_MODELS.includes(req.model)) {
     ws.send(JSON.stringify({ type: "error", id: req.id, message: `unsupported model: ${req.model}` }))
     console.log(`← ${req.model} [${tag}] error (unsupported model)`)
     return
@@ -575,7 +654,7 @@ async function handleCall(ws, req) {
   }
 }
 
-function connectOnce(opts) {
+function connectOnce(opts, models) {
   return new Promise((resolve) => {
     const url = `${opts.bridgeUrl}?token=${encodeURIComponent(opts.token)}`
     const ws = new WebSocket(url)
@@ -589,7 +668,7 @@ function connectOnce(opts) {
           type: "client_hello",
           protocolVersion: PROTOCOL_VERSION,
           cliVersion: CLI_VERSION,
-          models: SUPPORTED_MODELS,
+          models,
           pid: process.pid,
           hostname: hostname(),
         }),
@@ -660,28 +739,38 @@ async function main() {
     opts.tokenFromFlag = true
   }
 
-  let auth
+  let auth = null
   try {
     auth = loadCodexAuth()
+    console.log(`Signed in to ChatGPT as ${chatgptAccountLabel(auth)}.`)
   } catch (err) {
-    console.error(`error: ${err.message}`)
+    console.warn(`ChatGPT/Codex unavailable: ${err.message}`)
+  }
+
+  const hasClaudeCode = claudeCodeAvailable()
+  if (hasClaudeCode) console.log("Claude Code detected.")
+  const models = availableBridgeModels(auth, hasClaudeCode)
+  if (models.length === 0) {
+    console.error("error: no local model providers available. Set up Codex login or Claude Code, then retry.")
     process.exit(1)
   }
-  console.log(`Signed in to ChatGPT as ${chatgptAccountLabel(auth)}.`)
+  console.log(`Bridge models: ${models.join(", ")}.`)
 
   // Watch for codex rotating the token in the background — log when it
   // happens so users can correlate disconnects with refreshes.
-  setInterval(() => {
-    try {
-      const next = loadCodexAuth()
-      if (next.fileMtimeMs > auth.fileMtimeMs) {
-        auth = next
-        console.log(`ChatGPT token refreshed.`)
+  if (auth) {
+    setInterval(() => {
+      try {
+        const next = loadCodexAuth()
+        if (auth && next.fileMtimeMs > auth.fileMtimeMs) {
+          auth = next
+          console.log(`ChatGPT token refreshed.`)
+        }
+      } catch (err) {
+        console.warn(`Couldn't reload ChatGPT token: ${err.message}`)
       }
-    } catch (err) {
-      console.warn(`Couldn't reload ChatGPT token: ${err.message}`)
-    }
-  }, 30_000)
+    }, 30_000)
+  }
 
   // Pre-flight: fail fast on a stale saved token so the user isn't
   // left staring at a silent retry loop. Transient failures
@@ -703,7 +792,7 @@ async function main() {
 
   let backoffMs = RECONNECT_BASE_MS
   for (;;) {
-    const result = await connectOnce(opts)
+    const result = await connectOnce(opts, models)
     if (result.cleanClose) {
       // Server asked us to stop (Disconnect button or another CLI took
       // over). Bail cleanly — reconnecting would just fight the user.
